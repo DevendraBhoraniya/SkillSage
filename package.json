@@ -1,0 +1,21 @@
+{
+  "name": "skillsage_tel_bot",
+  "version": "1.0.0",
+  "description": "A Telegram bot for AI-powered teaching across various subjects",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google/generative-ai": "^0.17.1",
+    "dotenv": "^16.4.5",
+    "node-fetch": "^2.7.0",
+    "node-telegram-bot-api": "^0.66.0",
+    "nodemon": "^3.1.4"
+  }
+}
