@@ -7,12 +7,16 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-const fileManager = new GoogleAIFileManager(process.env.GOOGLE_API_KEY);
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY||process.env.GOOGLE_API_KEY_1);
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const fileManager = new GoogleAIFileManager(process.env.GOOGLE_API_KEY||process.env.GOOGLE_API_KEY_1);
 
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
 const chats = {}; // Store chat history for different users
+
+
+console.log("API keys ---", process.env.GOOGLE_API_KEY)
+console.log("API keys ---", process.env.TELEGRAM_BOT_TOKEN)
 
 const subjects = ['Math', 'Science', 'History', 'Literature', 'Computer Science'];
 
@@ -122,6 +126,9 @@ bot.on('polling_error', (error) => {
 
 async function handleImage(msg, chatId) {
     try {
+        // show Image is Uploading
+        bot.sendChatAction(chatId, 'upload_photo');
+
         const fileId = msg.photo[msg.photo.length - 1].file_id;
         const file = await bot.getFile(fileId);
         const filePath = file.file_path;
@@ -217,6 +224,9 @@ async function handleTextMessage(messageText, chatId) {
             bot.sendMessage(chatId, "Please start by selecting a subject using the /start command.");
             return;
         }
+
+         // Show "typing" indicator
+         bot.sendChatAction(chatId, 'typing');
 
         const subject = chats[chatId].subject;
         const prompt = `Regarding ${subject}: ${messageText} 
