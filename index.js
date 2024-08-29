@@ -15,8 +15,8 @@ const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
 const chats = {}; // Store chat history for different users
 
 
-console.log("API keys ---", process.env.GOOGLE_API_KEY)
-console.log("API keys ---", process.env.TELEGRAM_BOT_TOKEN)
+// console.log("API keys ---", process.env.GOOGLE_API_KEY)
+// console.log("API keys ---", process.env.TELEGRAM_BOT_TOKEN)
 
 const subjects = ['Math', 'Science', 'History', 'Literature', 'Computer Science'];
 
