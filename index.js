@@ -106,6 +106,20 @@ bot.on('message', async (msg) => {
     await handleTextMessage(messageText, chatId);
 });
 
+
+// to Fix polling Error 
+bot.on('polling_error', (error) => {
+    console.error('Polling error:', error.code);  // Log the error for debugging
+    if (error.code === 'ETELEGRAM' && error.response && error.response.statusCode === 409) {
+        console.log('Another instance is running. Restarting polling...');
+        bot.stopPolling();  // Stop the current polling
+        setTimeout(() => {
+            bot.startPolling();  // Restart polling after a delay
+        }, 3000);  // Wait for 3 seconds before restarting
+    }
+});
+
+
 async function handleImage(msg, chatId) {
     try {
         const fileId = msg.photo[msg.photo.length - 1].file_id;
