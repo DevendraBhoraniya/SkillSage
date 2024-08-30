@@ -123,7 +123,71 @@ bot.on('polling_error', (error) => {
     }
 });
 
+// async function handleImage(msg, chatId) {
+//     try {
+//         // Show Image is Uploading
+//         bot.sendChatAction(chatId, 'upload_photo');
 
+//         const fileId = msg.photo[msg.photo.length - 1].file_id;
+//         const file = await bot.getFile(fileId);
+//         const filePath = file.file_path;
+//         const downloadUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${filePath}`;
+//         const localFilePath = path.join(tempDir, `temp_image_${chatId}.jpg`);
+//         await downloadImage(downloadUrl, localFilePath);
+
+//         const fileSize = fs.statSync(localFilePath).size;
+//         let result;
+
+//         if (fileSize > 20 * 1024 * 1024) {
+//             // Use File API for larger files
+//             const uploadResponse = await fileManager.uploadFile(localFilePath, {
+//                 mimeType: "image/jpeg",
+//                 displayName: "Telegram image",
+//             });
+
+//             result = await model.generateContent([
+//                 {
+//                     fileData: {
+//                         mimeType: uploadResponse.file.mimeType,
+//                         fileUri: uploadResponse.file.uri
+//                     }
+//                 },
+//                 { text: `Analyze this image and determine if it's related to ${chats[chatId].subject}. If it is, describe it in detail. If it's not, provide a brief description and remind the user to stay focused on their studies.` }
+//             ]);
+//         } else {
+//             // Use inline data for smaller files
+//             const fileContent = fs.readFileSync(localFilePath, { encoding: 'base64' });
+//             result = await model.generateContent([
+//                 {
+//                     inlineData: {
+//                         mimeType: 'image/jpeg',
+//                         data: fileContent
+//                     }
+//                 },
+//                 { text: `Analyze this image and determine if it's related to ${chats[chatId].subject}. If it is, describe it in detail. If it's not, provide a brief description and remind the user to stay focused on their studies.` }
+//             ]);
+//         }
+
+//         const responseText = result.response.text();
+//         bot.sendMessage(chatId, responseText);
+
+//         // Set a flag to indicate an image is active
+//         chats[chatId].activeImage = true;
+
+//         // Set a timeout to remove the image after 2 minutes if no questions are asked
+//         setTimeout(() => {
+//             if (chats[chatId] && chats[chatId].activeImage) {
+//                 fs.unlinkSync(localFilePath);
+//                 delete chats[chatId].activeImage;
+//                 bot.sendMessage(chatId, "The uploaded image has been removed as no questions were asked about it. Remember to stay focused on your studies!");
+//             }
+//         }, 120000); // 2 minutes in milliseconds
+
+//     } catch (error) {
+//         console.error('Error processing image:', error);
+//         bot.sendMessage(chatId, "Sorry, I encountered an error while processing the image.");
+//     }
+// }
 async function handleImage(msg, chatId) {
     try {
         // Show Image is Uploading
@@ -172,17 +236,14 @@ async function handleImage(msg, chatId) {
         const responseText = result.response.text();
         bot.sendMessage(chatId, responseText);
 
-        // Set a flag to indicate an image is active
-        chats[chatId].activeImage = true;
+        // Set image information
+        chats[chatId].activeImage = {
+            path: localFilePath,
+            lastInteraction: Date.now()
+        };
 
-        // Set a timeout to remove the image after 2 minutes if no questions are asked
-        setTimeout(() => {
-            if (chats[chatId] && chats[chatId].activeImage) {
-                fs.unlinkSync(localFilePath);
-                delete chats[chatId].activeImage;
-                bot.sendMessage(chatId, "The uploaded image has been removed as no questions were asked about it. Remember to stay focused on your studies!");
-            }
-        }, 120000); // 2 minutes in milliseconds
+        // Set a timeout to remove the image after 2 minutes of inactivity
+        chats[chatId].imageTimeout = setTimeout(() => removeInactiveImage(chatId), 120000);
 
     } catch (error) {
         console.error('Error processing image:', error);
@@ -190,7 +251,105 @@ async function handleImage(msg, chatId) {
     }
 }
 
+function removeInactiveImage(chatId) {
+    if (chats[chatId] && chats[chatId].activeImage) {
+        const { path, lastInteraction } = chats[chatId].activeImage;
+        const currentTime = Date.now();
+        if (currentTime - lastInteraction >= 120000) {
+            fs.unlinkSync(path);
+            delete chats[chatId].activeImage;
+            bot.sendMessage(chatId, "The uploaded image has been removed due to inactivity. Remember to stay focused on your studies!");
+        } else {
+            // If the image was interacted with recently, set a new timeout
+            chats[chatId].imageTimeout = setTimeout(() => removeInactiveImage(chatId), 120000 - (currentTime - lastInteraction));
+        }
+    }
+}
 
+
+// async function handleTextMessage(messageText, chatId) {
+//     try {
+//         if (!chats[chatId] || !chats[chatId].subject) {
+//             bot.sendMessage(chatId, "Please start by selecting a subject using the /start command.");
+//             return;
+//         }
+
+//         // Show "typing" indicator
+//         bot.sendChatAction(chatId, 'typing');
+
+//         const subject = chats[chatId].subject;
+
+//         // Check for restart or end commands
+//         if (messageText.toLowerCase() === '/restart') {
+//             delete chats[chatId];
+//             bot.sendMessage(chatId, "Let's start over! Please select a subject:", getSubjectMenu());
+//             return;
+//         } else if (messageText.toLowerCase() === '/end') {
+//             delete chats[chatId];
+//             bot.sendMessage(chatId, "Conversation ended and all data deleted. Type /start to begin a new conversation.");
+//             return;
+//         }
+
+//         let prompt;
+//         if (chats[chatId].activeImage) {
+//             prompt = `Regarding the recently uploaded image and ${subject}: ${messageText}
+//             Please answer the question about the image content. If the question or image is not related to ${subject}, provide a brief answer and gently remind the user to focus on ${subject}-related topics.`;
+            
+//             // Reset the image removal timeout
+//             clearTimeout(chats[chatId].imageTimeout);
+//             chats[chatId].imageTimeout = setTimeout(() => {
+//                 if (chats[chatId] && chats[chatId].activeImage) {
+//                     fs.unlinkSync(path.join(tempDir, `temp_image_${chatId}.jpg`));
+//                     delete chats[chatId].activeImage;
+//                     bot.sendMessage(chatId, "The uploaded image has been removed. Let's continue focusing on your ${subject} studies!");
+//                 }
+//             }, 120000); // Reset to 2 minutes
+//         } else {
+//             prompt = `You are an AI teacher specialized in ${subject}. The student has asked: "${messageText}"
+            
+//             Please provide a response following these guidelines:
+//             1. Focus solely on ${subject}-related information.
+//             2. If the question is not related to ${subject}, politely redirect the student and provide a brief ${subject}-related fact instead.
+//             3. Use *bold* for emphasis and headings.
+//             4. Use _italic_ for slight emphasis.
+//             5. Use \`inline code\` for short mathematical expressions or variables.
+//             6. Use \`\`\` for multi-line equations or code blocks.
+//             7. Use - for bullet points and 1. for numbered lists.
+//             8. For complex mathematical equations, use plain text representation.
+//             9. Ensure proper spacing between list items and equations.
+//             10. Keep the answer concise, aiming for about 400 tokens.
+//             11. End with a follow-up question to encourage further learning about ${subject}.`;
+//         }
+
+//         const result = await chats[chatId].chat.sendMessage(prompt);
+//         let responseText = await result.response.text();
+
+//         console.log("Original response ----", responseText);
+
+//         // Ensure proper line breaks for lists and equations
+//         responseText = responseText.replace(/\n([*-])/g, '\n\n$1');
+//         responseText = responseText.replace(/\n(\d+\.)/g, '\n\n$1');
+//         responseText = responseText.replace(/\n(```)/g, '\n\n$1');
+
+//         // Improve formatting for inline mathematical expressions
+//         responseText = responseText.replace(/\$([^$]+)\$/g, '`$1`');
+
+//         chats[chatId].history.push({ role: "user", parts: messageText }, { role: "model", parts: responseText });
+
+//         // Send the response with Markdown parsing
+//         bot.sendMessage(chatId, responseText, {
+//             parse_mode: 'Markdown',
+//             disable_web_page_preview: true
+//         }).catch(error => {
+//             console.error('Error sending formatted message:', error);
+//             // If Markdown parsing fails, send the message without formatting
+//             bot.sendMessage(chatId, "Sorry, I couldn't format the message properly. Here's the plain text version:\n\n" + responseText.replace(/[*_`]/g, ''));
+//         });
+//     } catch (error) {
+//         console.error('Error generating content:', error);
+//         bot.sendMessage(chatId, "Sorry, I encountered an error. Please try again.");
+//     }
+// }
 
 async function handleTextMessage(messageText, chatId) {
     try {
@@ -217,18 +376,28 @@ async function handleTextMessage(messageText, chatId) {
 
         let prompt;
         if (chats[chatId].activeImage) {
-            prompt = `Regarding the recently uploaded image and ${subject}: ${messageText}
-            Please answer the question about the image content. If the question or image is not related to ${subject}, provide a brief answer and gently remind the user to focus on ${subject}-related topics.`;
+            // Update last interaction time for the image
+            chats[chatId].activeImage.lastInteraction = Date.now();
             
-            // Reset the image removal timeout
+            // Clear the existing timeout and set a new one
             clearTimeout(chats[chatId].imageTimeout);
-            chats[chatId].imageTimeout = setTimeout(() => {
-                if (chats[chatId] && chats[chatId].activeImage) {
-                    fs.unlinkSync(path.join(tempDir, `temp_image_${chatId}.jpg`));
-                    delete chats[chatId].activeImage;
-                    bot.sendMessage(chatId, "The uploaded image has been removed. Let's continue focusing on your ${subject} studies!");
-                }
-            }, 120000); // Reset to 2 minutes
+            chats[chatId].imageTimeout = setTimeout(() => removeInactiveImage(chatId), 120000);
+
+            prompt = `You are an AI teacher specialized in ${subject}. An image was recently uploaded, and the student has asked: "${messageText}"
+
+            Please provide a response following these guidelines:
+            1. If the question seems to be about the image, answer it based on the image content.
+            2. If the question is about ${subject}, focus on providing ${subject}-related information.
+            3. If the question is neither clearly about the image nor ${subject}, interpret it in the context of ${subject} if possible, or gently redirect the student to ${subject}-related topics.
+            4. Use *bold* for emphasis and headings.
+            5. Use _italic_ for slight emphasis.
+            6. Use \`inline code\` for short mathematical expressions or variables.
+            7. Use \`\`\` for multi-line equations or code blocks.
+            8. Use - for bullet points and 1. for numbered lists.
+            9. For complex mathematical equations, use plain text representation.
+            10. Ensure proper spacing between list items and equations.
+            11. Keep the answer concise, aiming for about 400 tokens.
+            12. End with a follow-up question to encourage further learning about ${subject} or to explore the image in the context of ${subject}.`;
         } else {
             prompt = `You are an AI teacher specialized in ${subject}. The student has asked: "${messageText}"
             
@@ -275,6 +444,7 @@ async function handleTextMessage(messageText, chatId) {
         bot.sendMessage(chatId, "Sorry, I encountered an error. Please try again.");
     }
 }
+
 
 // Function to fetch and save image
 async function downloadImage(url, filepath) {
